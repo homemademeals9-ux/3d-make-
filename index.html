@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Reconnected</title>
+<style>
+:root{--bg:#fff;--fg:#1a1a1a;--card:#f3f4f6;--ac:#6d28d9;--mu:#666}
+@media(prefers-color-scheme:dark){:root{--bg:#121212;--fg:#eee;--card:#1e1e22;--ac:#a78bfa;--mu:#999}}
+*{box-sizing:border-box}body{margin:0;font:16px system-ui,sans-serif;background:var(--bg);color:var(--fg);max-width:640px;margin:auto;padding:14px}
+h1{margin:6px 0}h2{margin:18px 0 8px}.card{background:var(--card);border-radius:12px;padding:12px;margin:8px 0}
+button{background:var(--ac);color:#fff;border:0;border-radius:10px;padding:10px 14px;font-size:15px;margin:3px 3px 3px 0}
+button.s{background:transparent;color:var(--ac);border:1px solid var(--ac)}
+input,select,textarea{width:100%;padding:10px;margin:4px 0;border-radius:8px;border:1px solid #8885;background:var(--bg);color:var(--fg);font-size:16px}
+img.p{width:100%;max-height:180px;object-fit:cover;border-radius:8px}.mu{color:var(--mu);font-size:14px}
+nav{display:flex;flex-wrap:wrap;gap:4px;margin-bottom:8px}
+</style></head><body>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
+<script>
+const sb=supabase.createClient("https://dbcnfpbtylkzyukrodej.supabase.co","sb_publishable_dh5UvdJJ3j6KrNMS9tjnVA_4qaq2gSS");
+const D="@hunt.example.com", $=s=>document.querySelector(s), app=document.body.appendChild(document.createElement("div"));
+const E=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+let me=null,cat=[],mode="";
+const val=id=>document.getElementById(id)?.value.trim();
+const err=e=>alert(e.message||e);
+async function load(){
+ const{data:{session}}=await sb.auth.getSession();
+ me=null;
+ if(session){const{data}=await sb.from("profiles").select("*").eq("id",session.user.id).single();me=data}
+ cat=(await sb.from("catalog").select("*").eq("active",true).order("name")).data||[];
+ go(me?"dash":"home")}
+function nav(){return `<h1>👻 Reconnected</h1><nav><button class="s" onclick="go('home')">Home</button><button class="s" onclick="go('browse')">Browse</button>`+
+ (me?`<button class="s" onclick="go('dash')">My page</button><button class="s" onclick="go('hunt')">Hunt</button><button class="s" onclick="go('found')">I found one</button><button class="s" onclick="out()">Log out</button>`:`<button class="s" onclick="go('login')">Login</button>`)+`</nav>`}
+async function out(){await sb.auth.signOut();load()}
+function go(v){mode=v;({home,browse,login,dash,hunt,found,manage,hide})[v]?.call?.();}
+function show(h){app.innerHTML=nav()+h}
+function home(){show(`<div class="card"><p>Hide prints. Find prints. Earn points.</p><button onclick="go('login')">Login</button><button class="s" onclick="go('browse')">Browse items</button></div>`)}
+function item(c,extra=""){return `<div class="card">${c.image_url?`<img class="p" src="${E(c.image_url)}">`:""}<b>${E(c.name)}</b><div class="mu">${E(c.description)}</div>${extra}</div>`}
+function browse(){show(`<h2>Items</h2>`+(cat.map(c=>item(c,me?`<button onclick="order('${c.id}')">Order (+20 pts)</button>`:`<div class="mu">Log in to order</div>`)).join("")||"<p>No items yet.</p>"))}
+async function order(id){const n=prompt("Quantity (1-20)?","1");if(!n)return;const note=prompt("Note (your name/class, optional)")||"";
+ const{error}=await sb.rpc("place_order",{cat:id,q:+n,n:note});if(error)return err(error);alert("Ordered! +20 points");load()}
+function login(){show(`<h2>Are you a…</h2><button onclick="lg('hider')">Hider</button><button class="s" onclick="lg('buyer')">Buyer</button><div id="f"></div>`)}
+function lg(r){$("#f").innerHTML=`<div class="card"><input id="u" placeholder="Username" autocapitalize="none"><input id="p" type="password" placeholder="Password">
+<button onclick="doLogin()">Log in</button>${r=="buyer"?`<button class="s" onclick="doSignup()">Create buyer account</button>`:`<div class="mu">Hider accounts are given to you by the owner.</div>`}</div>`}
+const em=()=>val("u").toLowerCase().replace(/[^a-z0-9_.-]/g,"")+D;
+async function doLogin(){const{error}=await sb.auth.signInWithPassword({email:em(),password:val("p")});if(error)return err(error);load()}
+async function doSignup(){if(val("p").length<6)return alert("Password needs 6+ characters");const{error}=await sb.auth.signUp({email:em(),password:val("p")});if(error)return err(error);const r=await sb.auth.signInWithPassword({email:em(),password:val("p")});if(r.error)return err(r.error);load()}
+function dash(){
+ if(!me)return go("login");
+ show(`<div class="card"><b>${E(me.username)}</b> · ${me.role}<br>⭐ ${me.points} points</div>
+ <div class="card"><b>Contact (optional)</b><div class="mu">Only you and the owner can see this.</div><input id="e" placeholder="Email" value="${E(me.email)}"><input id="ph" placeholder="Phone" value="${E(me.phone)}"><button onclick="saveC()">Save</button></div>
+ ${me.role!="buyer"?`<button onclick="go('hide')">Hide a print</button>`:""}${me.role=="owner"?`<button class="s" onclick="go('manage')">Manage</button>`:""}<div id="x"></div>`);
+ if(me.role!="buyer")hiderPanel(); pts()}
+async function pts(){const{data}=await sb.from("points_log").select("*").order("created_at",{ascending:false}).limit(8);
+ $("#x").insertAdjacentHTML("beforeend",`<h2>Recent points</h2>`+(data||[]).map(l=>`<div class="mu">${l.delta>0?"+":""}${l.delta} · ${E(l.reason)}</div>`).join(""))}
+async function saveC(){const{error}=await sb.rpc("update_contact",{e:val("e"),p:val("ph")});error?err(error):alert("Saved")}
+async function photoUrl(p){return(await sb.storage.from("claim-photos").createSignedUrl(p,600)).data?.signedUrl||""}
+async function hiderPanel(){
+ const cl=(await sb.from("claims").select("*").eq("current_hider_id",me.id).eq("status","pending")).data||[];
+ let h="<h2>Finds to review</h2>";
+ for(const c of cl){const n=cat.find(x=>x.id==c.catalog_id)?.name;
+  h+=`<div class="card"><b>${E(c.finder_username)}</b> found a ${E(n)}<br>${c.serial?`Serial: ${E(c.serial)}<br>`:""}Where: ${E(c.found_where)}<br><img class="p" src="${await photoUrl(c.photo_path)}">
+  <button onclick="conf('${c.id}')">Confirm, it's gone (+58 to finder)</button>${c.print_id?"":`<button class="s" onclick="pass('${c.id}')">Not mine, next person</button>`}</div>`}
+ if(!cl.length)h+=`<p class="mu">Nothing waiting.</p>`;
+ const pr=(await sb.from("prints").select("*").eq("hider_id",me.id).order("created_at",{ascending:false})).data||[];
+ h+="<h2>My prints</h2>";
+ for(const p of pr){const n=cat.find(x=>x.id==p.catalog_id)?.name;
+  h+=`<div class="card"><b>${E(n)}</b> ${p.serial?`#${E(p.serial)}`:""} · ${p.status}<br><span class="mu">${E(p.spot)}</span>`;
+  if(p.status=="found")h+=`<br><b>Want more points? Return it:</b><input id="r${p.id}" placeholder="Finder's username"><button onclick="ret('${p.id}')">Give 10 points</button><button class="s" onclick="rehide('${p.id}')">Hide again</button>`;
+  h+="</div>"}
+ $("#x").insertAdjacentHTML("afterbegin",h)}
+async function conf(id){const{error}=await sb.rpc("confirm_claim",{cid:id});error?err(error):load()}
+async function pass(id){const{error}=await sb.rpc("pass_claim",{cid:id});error?err(error):load()}
+async function ret(id){const{error}=await sb.rpc("return_print",{pid:id,finder_name:val("r"+id)});error?err(error):(alert("10 points sent"),load())}
+async function rehide(id){const sp=prompt("Where did you hide it now?");if(!sp)return;const hi=prompt("Hint (optional)")||"";
+ const{error}=await sb.rpc("rehide",{pid:id,sp,hi,hunt:!!hi});error?err(error):load()}
+function hide(){
+ show(`<h2>Hide a print</h2><div class="card"><select id="c">${cat.map(c=>`<option value="${c.id}">${E(c.name)}</option>`).join("")}</select>
+ <input id="se" placeholder="Serial number (optional)"><textarea id="sp" placeholder="Where is it hidden? (only you and the owner see this)"></textarea>
+ <input id="hi" placeholder="Hint for Hunt (optional)"><label><input type="checkbox" id="nh" style="width:auto"> Do not put in Hunt</label><br><button onclick="doHide()">Save</button></div>`)}
+async function doHide(){if(!val("sp"))return alert("Add where it's hidden");
+ const{error}=await sb.from("prints").insert({catalog_id:val("c"),hider_id:me.id,serial:val("se")||null,spot:val("sp"),hint:val("hi")||null,in_hunt:!$("#nh").checked});error?err(error):go("dash")}
+async function hunt(){
+ const h=(await sb.from("hunt_hints").select("*")).data||[];
+ show(`<h2>Hunt</h2>`+(h.map(x=>`<div class="card"><b>${E(cat.find(c=>c.id==x.catalog_id)?.name)}</b><br>💡 ${E(x.hint)}</div>`).join("")||"<p>No hints right now.</p>"))}
+function found(){
+ if(!me)return go("login");
+ show(`<h2>I found one</h2><div class="card"><select id="c">${cat.map(c=>`<option value="${c.id}">${E(c.name)}</option>`).join("")}</select>
+ <input id="se" placeholder="Serial number (if it has one)"><textarea id="w" placeholder="Where did you find it?"></textarea>
+ <div class="mu">Photo of the print only, no faces please.</div><input id="ph" type="file" accept="image/*"><button onclick="sendF()">Send</button></div>`)}
+async function sendF(){const f=$("#ph").files[0];if(!f)return alert("Photo required");
+ const path=`${me.id}/${Date.now()}.jpg`;const u=await sb.storage.from("claim-photos").upload(path,f);if(u.error)return err(u.error);
+ const{error}=await sb.rpc("submit_claim",{cat:val("c"),ser:val("se"),wh:val("w"),photo:path});error?err(error):(alert("Sent to the hider for confirmation"),go("dash"))}
+async function manage(){
+ if(me?.role!="owner")return go("dash");
+ const us=(await sb.from("profiles").select("*").order("username")).data||[];
+ const od=(await sb.from("orders").select("*").order("created_at",{ascending:false})).data||[];
+ const cl=(await sb.from("claims").select("*").eq("status","needs_owner")).data||[];
+ const pr=(await sb.from("prints").select("*")).data||[];
+ let h=`<h2>Add catalog item</h2><div class="card"><input id="cn" placeholder="Name (Blue Ghost)"><input id="cd" placeholder="Short description"><input id="ci" type="file" accept="image/*"><button onclick="addCat()">Add</button></div>
+ <h2>Users</h2>`+us.map(u=>`<div class="card"><b>${E(u.username)}</b> · ${u.role} · ⭐${u.points}<div class="mu">${E(u.email)} ${E(u.phone)}</div>
+ <button class="s" onclick="role('${u.id}','hider')">Make hider</button><button class="s" onclick="role('${u.id}','buyer')">Make buyer</button><button class="s" onclick="adj('${u.id}')">± points</button></div>`).join("")+
+ `<h2>Orders</h2>`+od.map(o=>`<div class="card">${E(us.find(u=>u.id==o.buyer_id)?.username)}: ${o.qty}× ${E(cat.find(c=>c.id==o.catalog_id)?.name)}<div class="mu">${E(o.note)} · ${o.status}</div>${o.status=="new"?`<button class="s" onclick="done('${o.id}')">Mark done</button>`:""}</div>`).join("")+
+ `<h2>Finds needing you</h2>`;
+ for(const c of cl)h+=`<div class="card">${E(c.finder_username)} · ${E(cat.find(x=>x.id==c.catalog_id)?.name)}<br>${E(c.found_where)}<br><img class="p" src="${await photoUrl(c.photo_path)}"><div class="mu">Award points with ± points above.</div></div>`;
+ h+=`<h2>Year-end export</h2><button onclick="exp()">Download prints list (CSV)</button>`;
+ window._pr=pr;window._us=us;show(h)}
+async function addCat(){let url=null;const f=$("#ci").files[0];
+ if(f){const p=`${Date.now()}.jpg`;const u=await sb.storage.from("catalog").upload(p,f);if(u.error)return err(u.error);url=sb.storage.from("catalog").getPublicUrl(p).data.publicUrl}
+ const{error}=await sb.from("catalog").insert({name:val("cn"),description:val("cd"),image_url:url});error?err(error):load().then(()=>go("manage"))}
+async function role(id,r){const{error}=await sb.rpc("owner_set_role",{u:id,r});error?err(error):manage()}
+async function adj(id){const d=prompt("Points (use - to remove)");if(!d)return;const{error}=await sb.rpc("owner_adjust",{u:id,d:+d,why:prompt("Reason")||"Owner adjustment"});error?err(error):manage()}
+async function done(id){await sb.from("orders").update({status:"done"}).eq("id",id);manage()}
+function exp(){const q=s=>`"${String(s??"").replace(/"/g,'""')}"`;
+ const rows=[["hider","print","serial","spot","status"],..._pr.map(p=>[_us.find(u=>u.id==p.hider_id)?.username,cat.find(c=>c.id==p.catalog_id)?.name,p.serial,p.spot,p.status]).sort((a,b)=>String(a[0]).localeCompare(String(b[0])))];
+ const a=document.createElement("a");a.href=URL.createObjectURL(new Blob([rows.map(r=>r.map(q).join(",")).join("\n")],{type:"text/csv"}));a.download="prints.csv";a.click()}
+load();
+</script></body></html>
